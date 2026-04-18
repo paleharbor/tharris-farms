@@ -1946,6 +1946,27 @@ class MainWindow(QMainWindow):
         status_lbl.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 10px; padding: 12px 16px;")
         sl.addWidget(status_lbl)
 
+        update_btn = QPushButton("⬆  Check for Updates")
+        update_btn.setObjectName("secondary_btn")
+        update_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {COLORS['text_dim']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 4px;
+                padding: 6px 10px;
+                font-size: 10px;
+                margin: 0px 12px 12px 12px;
+            }}
+            QPushButton:hover {{
+                background-color: {COLORS['bg_panel']};
+                color: {COLORS['text']};
+                border-color: {COLORS['accent_dim']};
+            }}
+        """)
+        update_btn.clicked.connect(self._check_for_updates)
+        sl.addWidget(update_btn)
+
         # Stack
         self.stack = QStackedWidget()
         self.stack.setObjectName("content_area")
@@ -1961,6 +1982,64 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(sidebar)
         main_layout.addWidget(self.stack, 1)
+
+    def _check_for_updates(self):
+        import urllib.request
+        import json
+        import shutil
+        import subprocess
+
+        GITHUB_VERSION_URL = "https://raw.githubusercontent.com/paleharbor/tharris-farms/main/version.txt"
+        GITHUB_EXE_URL     = "https://raw.githubusercontent.com/paleharbor/tharris-farms/main/T.Harris%20Farms.exe"
+        VERSION_FILE       = os.path.join(os.path.dirname(os.path.abspath(__file__)), "version.txt")
+        EXE_PATH           = os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__)
+
+        try:
+            # Get current local version
+            local_version = "0.0"
+            if os.path.exists(VERSION_FILE):
+                with open(VERSION_FILE, "r") as f:
+                    local_version = f.read().strip()
+
+            # Get latest version from GitHub
+            req = urllib.request.Request(GITHUB_VERSION_URL, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                remote_version = resp.read().decode().strip()
+
+            if remote_version == local_version:
+                QMessageBox.information(self, "Up to Date", "✅  T. Harris Farms is already up to date.")
+                return
+
+            confirm = QMessageBox.question(self, "Update Available",
+                f"A new update is available (v{remote_version}).\n\nDownload and install now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if confirm != QMessageBox.StandardButton.Yes:
+                return
+
+            # Download new exe
+            app_dir  = os.path.dirname(os.path.abspath(__file__))
+            new_exe  = os.path.join(app_dir, "T.Harris Farms.exe")
+            temp_exe = new_exe + ".tmp"
+
+            req2 = urllib.request.Request(GITHUB_EXE_URL, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req2, timeout=60) as resp:
+                with open(temp_exe, "wb") as f:
+                    shutil.copyfileobj(resp, f)
+
+            # Replace exe and update version file
+            if os.path.exists(new_exe):
+                os.replace(temp_exe, new_exe)
+            else:
+                os.rename(temp_exe, new_exe)
+
+            with open(VERSION_FILE, "w") as f:
+                f.write(remote_version)
+
+            QMessageBox.information(self, "Update Complete",
+                f"✅  Updated to v{remote_version}!\n\nPlease close and reopen the app.")
+
+        except Exception as e:
+            QMessageBox.warning(self, "Update Failed", f"Could not check for updates:\n{str(e)}")
 
     def _nav_to(self, idx):
         for i, btn in enumerate(self.nav_buttons):
