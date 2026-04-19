@@ -2368,13 +2368,13 @@ class MainWindow(QMainWindow):
             # Get current local version
             local_version = "0.0"
             if os.path.exists(VERSION_FILE):
-                with open(VERSION_FILE, "r") as f:
+                with open(VERSION_FILE, "r", encoding="utf-8-sig") as f:
                     local_version = f.read().strip()
 
             # Get latest version from GitHub
             req = urllib.request.Request(GITHUB_VERSION_URL, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=10) as resp:
-                remote_version = resp.read().decode().strip()
+                remote_version = resp.read().decode("utf-8-sig").strip()
 
             if remote_version == local_version:
                 QMessageBox.information(self, "Up to Date", "✅  T. Harris Farms is already up to date.")
@@ -2386,18 +2386,27 @@ class MainWindow(QMainWindow):
             if confirm != QMessageBox.StandardButton.Yes:
                 return
 
-            # Download new exe next to current exe
+            # Download new exe to temp file
             temp_exe = NEW_EXE + ".tmp"
             req2 = urllib.request.Request(GITHUB_EXE_URL, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req2, timeout=60) as resp:
+            with urllib.request.urlopen(req2, timeout=120) as resp:
                 with open(temp_exe, "wb") as f:
                     shutil.copyfileobj(resp, f)
 
-            os.replace(temp_exe, NEW_EXE)
+            # Write a batch script to replace the exe after app closes
+            bat_path = os.path.join(_APP_DIR, "update.bat")
+            with open(bat_path, "w") as bat:
+                bat.write(f'@echo off\n')
+                bat.write(f'timeout /t 2 /nobreak >nul\n')
+                bat.write(f'move /y "{temp_exe}" "{NEW_EXE}"\n')
+                bat.write(f'del "%~f0"\n')
 
-            # Update local version file
-            with open(VERSION_FILE, "w") as f:
+            # Update version file
+            with open(VERSION_FILE, "w", encoding="utf-8") as f:
                 f.write(remote_version)
+
+            import subprocess
+            subprocess.Popen(["cmd", "/c", bat_path], creationflags=subprocess.CREATE_NO_WINDOW)
 
             QMessageBox.information(self, "Update Complete",
                 f"✅  Updated to v{remote_version}!\n\nPlease close and reopen the app.")
