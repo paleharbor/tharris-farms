@@ -1555,7 +1555,7 @@ def generate_farm_report(records, options, filepath):
     # Footer
     story.append(Spacer(1, 20))
     story.append(HRFlowable(width="100%", thickness=0.5, color=ACCENT, spaceAfter=6))
-    footer_text = f"Generated {today.strftime('%B %d, %Y at %I:%M %p')}  |  Farm Management App"
+    footer_text = f"Generated {today.strftime('%B %d, %Y at %I:%M %p')}  |  T. Harris Farms"
     story.append(Paragraph(footer_text, ParagraphStyle("footer",
         fontSize=8, textColor=TEXT_DIM, fontName="Helvetica", alignment=TA_CENTER)))
 
