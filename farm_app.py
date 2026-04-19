@@ -51,7 +51,7 @@ SCOPES = [
 EXPENSE_CATEGORIES = [
     "Basic Supplies", "Building Supplies", "Chemicals", "Electric",
     "Farm Insurance", "Feed", "Fuel/Diesel", "Gas", "Gravel",
-    "Lime/Fertilizer", "Livestock", "Meds", "Minerals", "Other",
+    "Lyme/Fertilizer", "Livestock", "Meds", "Minerals", "Other",
     "Parts", "Real Estate Taxes", "Repairs & Maintenance", "Seeds",
     "Truck Interest", "Truck Mileage", "Truck Taxes", "WiFi"
 ]
@@ -770,16 +770,28 @@ class ExpenseDialog(QDialog):
 
         # Upload image if a new one was picked
         image_url = self._image_url
-        if self._local_path and GSPREAD_AVAILABLE and os.path.exists(CREDENTIALS_FILE):
-            vendor   = self.vendor_input.text().strip().replace(" ", "_")
-            date_str = self.date_input.date().toString("yyyy-MM-dd")
-            ext      = os.path.splitext(self._local_path)[1]
-            fname    = f"receipt_{date_str}_{vendor}{ext}"
-            uploaded = upload_receipt_image(self._local_path, fname)
-            if uploaded:
-                image_url = uploaded
-                self.photo_lbl.setText("📷  Image attached")
-                self.photo_lbl.setStyleSheet(f"color: {COLORS['success']}; font-size: 11px;")
+        if self._local_path and os.path.exists(self._local_path):
+            try:
+                from googleapiclient.discovery import build
+                vendor   = self.vendor_input.text().strip().replace(" ", "_")
+                date_str = self.date_input.date().toString("yyyy-MM-dd")
+                ext      = os.path.splitext(self._local_path)[1]
+                fname    = f"receipt_{date_str}_{vendor}{ext}"
+                uploaded = upload_receipt_image(self._local_path, fname)
+                if uploaded:
+                    image_url = uploaded
+                    self.photo_lbl.setText("📷  Image attached")
+                    self.photo_lbl.setStyleSheet(f"color: {COLORS['success']}; font-size: 11px;")
+                else:
+                    QMessageBox.warning(self, "Upload Failed",
+                        "Image could not be uploaded to Google Drive.\nCheck your internet connection and credentials.")
+            except ImportError:
+                QMessageBox.warning(self, "Missing Library",
+                    "Google Drive upload requires an extra library.\n\n"
+                    "Run this in PowerShell:\n"
+                    "pip install google-api-python-client")
+            except Exception as e:
+                QMessageBox.warning(self, "Upload Error", f"Upload failed:\n{str(e)}")
 
         return {
             "Date":          self.date_input.date().toString("yyyy-MM-dd"),
@@ -1356,18 +1368,18 @@ def generate_farm_report(records, options, filepath):
         bottomMargin=0.75 * inch,
     )
 
-    # Colors
-    DARK_GREEN  = rl_colors.HexColor("#1B2A1B")
-    MID_GREEN   = rl_colors.HexColor("#243324")
-    ACCENT      = rl_colors.HexColor("#6B8F47")
-    ACCENT_LT   = rl_colors.HexColor("#8FB562")
-    TAN         = rl_colors.HexColor("#C8BC8A")
-    TEXT_DIM    = rl_colors.HexColor("#9A9A82")
-    RED         = rl_colors.HexColor("#C0392B")
-    WHITE       = rl_colors.white
+    # Colors — Black & White
+    DARK_GREEN  = rl_colors.white
+    MID_GREEN   = rl_colors.HexColor("#F5F5F5")
+    ACCENT      = rl_colors.black
+    ACCENT_LT   = rl_colors.black
+    TAN         = rl_colors.black
+    TEXT_DIM    = rl_colors.HexColor("#555555")
+    RED         = rl_colors.black
+    WHITE       = rl_colors.black
     BLACK       = rl_colors.black
-    SUCCESS     = rl_colors.HexColor("#2ECC71")
-    ROW_ALT     = rl_colors.HexColor("#1F2E1F")
+    SUCCESS     = rl_colors.black
+    ROW_ALT     = rl_colors.HexColor("#EEEEEE")
 
     styles = getSampleStyleSheet()
     style_title = ParagraphStyle("rpt_title",
@@ -1526,7 +1538,7 @@ def generate_farm_report(records, options, filepath):
     # Build with dark background
     def dark_bg(canvas, doc):
         canvas.saveState()
-        canvas.setFillColor(rl_colors.HexColor("#111A11"))
+        canvas.setFillColor(rl_colors.white)
         canvas.rect(0, 0, letter[0], letter[1], fill=1, stroke=0)
         canvas.restoreState()
 
@@ -1538,6 +1550,7 @@ class FinancesPage(QWidget):
         super().__init__()
         self.backend = backend
         self.records = []
+        self.income_records = []
         self.setObjectName("content_area")
         self._build()
 
@@ -1548,7 +1561,7 @@ class FinancesPage(QWidget):
 
         layout.addWidget(make_page_header("💰  Finances", "EXPENSE TRACKING"))
 
-        # Toolbar
+        # Expense Toolbar
         toolbar = QWidget()
         toolbar.setStyleSheet(f"background-color: {COLORS['bg_mid']}; border-bottom: 1px solid {COLORS['border']};")
         tb = QHBoxLayout(toolbar)
@@ -1575,29 +1588,30 @@ class FinancesPage(QWidget):
         report_btn.setObjectName("secondary_btn")
         report_btn.clicked.connect(self._generate_report)
 
-        income_btn = QPushButton("＋  Add Income")
-        income_btn.setObjectName("secondary_btn")
-        income_btn.clicked.connect(self._add_income)
-
         tb.addWidget(self.search_input)
         tb.addStretch()
         tb.addWidget(report_btn)
         tb.addWidget(edit_btn)
         tb.addWidget(del_btn)
-        tb.addWidget(income_btn)
         tb.addWidget(add_btn)
+
+        income_btn = QPushButton("＋  Add Income")
+        income_btn.setObjectName("secondary_btn")
+        income_btn.clicked.connect(self._add_income)
+        tb.addWidget(income_btn)
         layout.addWidget(toolbar)
 
-        # Table: Date | Vendor | categories | Total | 📷
+        # Expense Table
         headers = ["Date", "Invoice #", "Vendor"] + EXPENSE_CATEGORIES + ["Total", "📷"]
         self.table = make_table(headers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.table.cellClicked.connect(self._on_cell_clicked)
         layout.addWidget(self.table)
 
     def refresh(self):
         self.records = self.backend.get_all_records("Expenses")
+        self.income_records = self.backend.get_all_records("Income")
         self._update_totals()
         self._render(self.records)
 
@@ -1608,17 +1622,18 @@ class FinancesPage(QWidget):
         self.table.setRowCount(0)
         keys = ["Date", "Invoice #", "Vendor"] + EXPENSE_CATEGORIES + ["Total", "📷"]
 
-        # Data rows
+        # Expense rows
         for rd in records:
             row = self.table.rowCount()
             self.table.insertRow(row)
             for col, key in enumerate(keys):
                 if key == "📷":
-                    url = str(rd.get("Receipt Image", ""))
-                    item = QTableWidgetItem("📷" if url else "·")
+                    url = str(rd.get("Receipt Image", "")).strip()
+                    has_image = url and url != "0" and url.startswith("http")
+                    item = QTableWidgetItem("📷" if has_image else "·")
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
-                    item.setForeground(QColor(COLORS['accent_light'] if url else COLORS['text_dim']))
-                    item.setToolTip("Click to view receipt image" if url else "No image attached")
+                    item.setForeground(QColor(COLORS['accent_light'] if has_image else COLORS['text_dim']))
+                    item.setToolTip("Click to view receipt image" if has_image else "No image attached")
                 elif key in EXPENSE_CATEGORIES or key == "Total":
                     val = rd.get(key, "")
                     fval = safe_float(val)
@@ -1634,9 +1649,36 @@ class FinancesPage(QWidget):
                     item = QTableWidgetItem(str(rd.get(key, "")))
                 self.table.setItem(row, col, item)
 
+        # Income rows — shown inline with green styling
+        for rd in self.income_records:
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            for col, key in enumerate(keys):
+                if key == "Date":
+                    item = QTableWidgetItem(str(rd.get("Date", "")))
+                elif key == "Vendor":
+                    item = QTableWidgetItem(f"📈  {rd.get('Description', '')}")
+                    item.setForeground(QColor(COLORS['success']))
+                elif key == "Total":
+                    amt = safe_float(rd.get("Amount", 0))
+                    item = QTableWidgetItem(f"${amt:,.2f}")
+                    item.setForeground(QColor(COLORS['success']))
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                else:
+                    item = QTableWidgetItem("")
+                    item.setForeground(QColor(COLORS['text_dim']))
+                item.setBackground(QColor(COLORS['bg_row_alt']))
+                self.table.setItem(row, col, item)
+
+        # Tag records for edit/delete identification
+        self.table._records = records
+        self.table._income_offset = len(records)
+
         # Totals row
         cat_totals = {cat: sum(safe_float(r.get(cat, 0)) for r in self.records) for cat in EXPENSE_CATEGORIES}
-        grand = sum(safe_float(r.get("Total", 0)) for r in self.records)
+        grand_exp  = sum(safe_float(r.get("Total", 0)) for r in self.records)
+        grand_inc  = sum(safe_float(r.get("Amount", 0)) for r in self.income_records)
+        grand_net  = grand_inc - grand_exp
 
         totals_row = self.table.rowCount()
         self.table.insertRow(totals_row)
@@ -1648,8 +1690,9 @@ class FinancesPage(QWidget):
             elif key in ("Invoice #", "Vendor", "📷"):
                 item = QTableWidgetItem("")
             elif key == "Total":
-                item = QTableWidgetItem(f"${grand:,.2f}")
-                item.setForeground(QColor(COLORS['accent_light']))
+                net_color = COLORS['success'] if grand_net >= 0 else COLORS['danger']
+                item = QTableWidgetItem(f"Net: ${grand_net:,.2f}")
+                item.setForeground(QColor(net_color))
                 item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 font = QFont(); font.setBold(True); item.setFont(font)
             else:
@@ -1661,8 +1704,6 @@ class FinancesPage(QWidget):
             item.setBackground(QColor(COLORS['header_bg']))
             self.table.setItem(totals_row, col, item)
 
-        self.table._records = records
-
     def _on_cell_clicked(self, row, col):
         camera_col = 3 + len(EXPENSE_CATEGORIES) + 1  # Date+Invoice+#+Vendor + cats + Total
         if col != camera_col:
@@ -1671,8 +1712,8 @@ class FinancesPage(QWidget):
         if row >= len(rec_list):
             return
         record = rec_list[row]
-        url = str(record.get("Receipt Image", ""))
-        if not url:
+        url = str(record.get("Receipt Image", "")).strip()
+        if not url or url == "0" or not url.startswith("http"):
             QMessageBox.information(self, "No Image", "No receipt image attached to this transaction.")
             return
         self._view_image(url, record.get("Vendor", ""))
@@ -1748,8 +1789,29 @@ class FinancesPage(QWidget):
     def _edit(self):
         row = self.table.currentRow()
         if row < 0:
-            QMessageBox.information(self, "Select a Row", "Please select a receipt to edit.")
+            QMessageBox.information(self, "Select a Row", "Please select a transaction to edit.")
             return
+        income_offset = getattr(self.table, "_income_offset", len(self.records))
+        totals_row = income_offset + len(self.income_records)
+        if row >= totals_row:
+            return  # Totals row — not editable
+
+        # Income row
+        if row >= income_offset:
+            inc_idx = row - income_offset
+            if inc_idx >= len(self.income_records):
+                return
+            record = self.income_records[inc_idx]
+            dlg = IncomeDialog(self, record)
+            if dlg.exec() == QDialog.DialogCode.Accepted:
+                data = dlg.get_data()
+                full_idx = next((i for i, r in enumerate(self.income_records) if r.get("ID") == record.get("ID")), inc_idx)
+                self.backend.update_row("Income", full_idx,
+                    [record.get("ID"), data["Date"], data["Description"], data["Amount"]])
+                self.refresh()
+            return
+
+        # Expense row
         rec_list = getattr(self.table, "_records", self.records)
         if row >= len(rec_list):
             return
@@ -1767,15 +1829,35 @@ class FinancesPage(QWidget):
     def _delete(self):
         row = self.table.currentRow()
         if row < 0:
-            QMessageBox.information(self, "Select a Row", "Please select a receipt to delete.")
+            QMessageBox.information(self, "Select a Row", "Please select a transaction to delete.")
             return
+        income_offset = getattr(self.table, "_income_offset", len(self.records))
+        totals_row = income_offset + len(self.income_records)
+        if row >= totals_row:
+            return
+
+        # Income row
+        if row >= income_offset:
+            inc_idx = row - income_offset
+            if inc_idx >= len(self.income_records):
+                return
+            record = self.income_records[inc_idx]
+            confirm = QMessageBox.question(self, "Confirm Delete",
+                f"Delete income: '{record.get('Description', '')}'?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if confirm == QMessageBox.StandardButton.Yes:
+                full_idx = next((i for i, r in enumerate(self.income_records) if r.get("ID") == record.get("ID")), inc_idx)
+                self.backend.delete_row("Income", full_idx)
+                self.refresh()
+            return
+
+        # Expense row
         rec_list = getattr(self.table, "_records", self.records)
         if row >= len(rec_list):
             return
         record = rec_list[row]
-        vendor = record.get("Vendor", "")
         confirm = QMessageBox.question(self, "Confirm Delete",
-            f"Delete receipt from '{vendor}'?",
+            f"Delete receipt from '{record.get('Vendor', '')}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if confirm == QMessageBox.StandardButton.Yes:
             full_idx = next((i for i, r in enumerate(self.records) if r.get("ID") == record.get("ID")), row)
@@ -1817,8 +1899,7 @@ class FinancesPage(QWidget):
             data = dlg.get_data()
             new_id = self.backend.next_id("Income")
             self.backend.append_row("Income", [new_id, data["Date"], data["Description"], data["Amount"]])
-            QMessageBox.information(self, "Income Added",
-                f"✅  Income entry saved: {data['Description']}  —  ${data['Amount']:,.2f}")
+            self.refresh()
 
 
 class NotesPage(QWidget):
@@ -2279,9 +2360,9 @@ class MainWindow(QMainWindow):
         import shutil
 
         GITHUB_VERSION_URL = "https://raw.githubusercontent.com/paleharbor/tharris-farms/main/version.txt"
-        GITHUB_EXE_URL     = "https://raw.githubusercontent.com/paleharbor/tharris-farms/main/dist/T.Harris%20Farms.exe"
+        GITHUB_EXE_URL     = "https://github.com/paleharbor/tharris-farms/raw/main/dist/T.Harris%20Farm.exe"
         VERSION_FILE       = os.path.join(_APP_DIR, "version.txt")
-        NEW_EXE            = os.path.join(_APP_DIR, "T.Harris Farms.exe")
+        NEW_EXE            = os.path.join(_APP_DIR, "T.Harris Farm.exe")
 
         try:
             # Get current local version
