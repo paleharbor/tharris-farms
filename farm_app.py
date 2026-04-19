@@ -49,7 +49,7 @@ SCOPES = [
 ]
 
 EXPENSE_CATEGORIES = [
-    "Basic Supplies", "Building Supplies", "Chemicals", "Electric",
+    "Basic Supplies", "Chemicals", "Electric",
     "Farm Insurance", "Feed", "Fuel/Diesel", "Gas", "Gravel",
     "Lyme/Fertilizer", "Livestock", "Meds", "Minerals", "Other",
     "Parts", "Real Estate Taxes", "Repairs & Maintenance", "Seeds",
@@ -59,11 +59,36 @@ DRIVE_FOLDER_ID = "1P21kf7tJ5uSV19VoiA5NC8Hm0k-Jy7Vr"
 
 # ── Google Drive Upload ────────────────────────────────────────────────────────
 def upload_receipt_image(filepath, filename, creds_file=CREDENTIALS_FILE):
-    """Upload an image to Google Drive and return the shareable view URL."""
+    """Upload an image to Google Drive using OAuth and return the shareable view URL."""
     try:
         from googleapiclient.discovery import build
         from googleapiclient.http import MediaFileUpload
-        creds = Credentials.from_service_account_file(creds_file, scopes=SCOPES)
+        import pickle
+
+        token_file = os.path.join(_APP_DIR, "token.pickle")
+        oauth_file = os.path.join(_APP_DIR, "oauth_credentials.json")
+
+        # Load OAuth credentials
+        creds = None
+        if os.path.exists(token_file):
+            with open(token_file, "rb") as f:
+                creds = pickle.load(f)
+
+        # Refresh if expired
+        if creds and creds.expired and creds.refresh_token:
+            from google.auth.transport.requests import Request
+            creds.refresh(Request())
+            with open(token_file, "wb") as f:
+                pickle.dump(creds, f)
+
+        if not creds or not creds.valid:
+            from google_auth_oauthlib.flow import InstalledAppFlow
+            flow = InstalledAppFlow.from_client_secrets_file(
+                oauth_file, ["https://www.googleapis.com/auth/drive.file"])
+            creds = flow.run_local_server(port=0)
+            with open(token_file, "wb") as f:
+                pickle.dump(creds, f)
+
         service = build("drive", "v3", credentials=creds)
         file_metadata = {"name": filename, "parents": [DRIVE_FOLDER_ID]}
         media = MediaFileUpload(filepath, resumable=True)
@@ -71,15 +96,13 @@ def upload_receipt_image(filepath, filename, creds_file=CREDENTIALS_FILE):
             body=file_metadata, media_body=media, fields="id"
         ).execute()
         file_id = uploaded.get("id")
-        # Make publicly viewable
         service.permissions().create(
             fileId=file_id,
             body={"type": "anyone", "role": "reader"}
         ).execute()
         return f"https://drive.google.com/uc?id={file_id}"
     except Exception as e:
-        print(f"Drive upload error: {e}")
-        return ""
+        raise Exception(f"Drive upload failed: {str(e)}")
 
 # ── Theme ──────────────────────────────────────────────────────────────────────
 COLORS = {
@@ -476,9 +499,9 @@ class LocalStore:
                 {"ID": 3, "Tag": "#003", "Birth Date": "2019-11-20", "Mother": "Unknown", "Father": "Unknown", "Classification": "Heifer", "Tag/Band Status": "Tagged & Banded", "Status": "Sold", "Archived Date": "2025-01-05"},
             ],
             "Expenses": [
-                {"ID": 1, "Date": "2025-02-01", "Invoice #": "INV-001", "Vendor": "Tractor Supply", "Feed": 320.00, "Parts": 0, "Chemicals": 0, "Meds": 0, "Basic Supplies": 45.00, "Building Supplies": 0, "Livestock": 0, "Electric": 0, "Gravel": 0, "Repairs & Maintenance": 0, "Gas": 0, "WiFi": 0, "Truck Interest": 0, "Farm Insurance": 0, "Real Estate Taxes": 0, "Truck Taxes": 0, "Truck Mileage": 0, "Fuel/Diesel": 0, "Seeds": 0, "Lime/Fertilizer": 0, "Minerals": 0, "Other": 0, "Total": 365.00, "Notes": "", "Receipt Image": ""},
-                {"ID": 2, "Date": "2025-02-14", "Invoice #": "INV-002", "Vendor": "Ace Hardware", "Feed": 0, "Parts": 145.00, "Chemicals": 0, "Meds": 0, "Basic Supplies": 0, "Building Supplies": 78.00, "Livestock": 0, "Electric": 0, "Gravel": 0, "Repairs & Maintenance": 0, "Gas": 0, "WiFi": 0, "Truck Interest": 0, "Farm Insurance": 0, "Real Estate Taxes": 0, "Truck Taxes": 0, "Truck Mileage": 0, "Fuel/Diesel": 0, "Seeds": 0, "Lime/Fertilizer": 0, "Minerals": 0, "Other": 0, "Total": 223.00, "Notes": "", "Receipt Image": ""},
-                {"ID": 3, "Date": "2025-03-10", "Invoice #": "INV-003", "Vendor": "Co-op Farm Store", "Feed": 210.00, "Parts": 0, "Chemicals": 55.00, "Meds": 120.00, "Basic Supplies": 0, "Building Supplies": 0, "Livestock": 0, "Electric": 0, "Gravel": 0, "Repairs & Maintenance": 0, "Gas": 0, "WiFi": 0, "Truck Interest": 0, "Farm Insurance": 0, "Real Estate Taxes": 0, "Truck Taxes": 0, "Truck Mileage": 0, "Fuel/Diesel": 0, "Seeds": 0, "Lime/Fertilizer": 0, "Minerals": 0, "Other": 0, "Total": 385.00, "Notes": "", "Receipt Image": ""},
+                {"ID": 1, "Date": "2025-02-01", "Invoice #": "INV-001", "Vendor": "Tractor Supply", "Feed": 320.00, "Parts": 0, "Chemicals": 0, "Meds": 0, "Basic Supplies": 45.00, "Livestock": 0, "Electric": 0, "Gravel": 0, "Repairs & Maintenance": 0, "Gas": 0, "WiFi": 0, "Truck Interest": 0, "Farm Insurance": 0, "Real Estate Taxes": 0, "Truck Taxes": 0, "Truck Mileage": 0, "Fuel/Diesel": 0, "Seeds": 0, "Lyme/Fertilizer": 0, "Minerals": 0, "Other": 0, "Total": 365.00, "Notes": "", "Receipt Image": ""},
+                {"ID": 2, "Date": "2025-02-14", "Invoice #": "INV-002", "Vendor": "Ace Hardware", "Feed": 0, "Parts": 145.00, "Chemicals": 0, "Meds": 0, "Basic Supplies": 0, "Livestock": 0, "Electric": 0, "Gravel": 0, "Repairs & Maintenance": 0, "Gas": 0, "WiFi": 0, "Truck Interest": 0, "Farm Insurance": 0, "Real Estate Taxes": 0, "Truck Taxes": 0, "Truck Mileage": 0, "Fuel/Diesel": 0, "Seeds": 0, "Lyme/Fertilizer": 0, "Minerals": 0, "Other": 0, "Total": 145.00, "Notes": "", "Receipt Image": ""},
+                {"ID": 3, "Date": "2025-03-10", "Invoice #": "INV-003", "Vendor": "Co-op Farm Store", "Feed": 210.00, "Parts": 0, "Chemicals": 55.00, "Meds": 120.00, "Basic Supplies": 0, "Livestock": 0, "Electric": 0, "Gravel": 0, "Repairs & Maintenance": 0, "Gas": 0, "WiFi": 0, "Truck Interest": 0, "Farm Insurance": 0, "Real Estate Taxes": 0, "Truck Taxes": 0, "Truck Mileage": 0, "Fuel/Diesel": 0, "Seeds": 0, "Lyme/Fertilizer": 0, "Minerals": 0, "Other": 0, "Total": 385.00, "Notes": "", "Receipt Image": ""},
             ],
             "Income": [
                 {"ID": 1, "Date": "2025-01-15", "Description": "Livestock Sale — Spring Calves", "Amount": 4800.00},
