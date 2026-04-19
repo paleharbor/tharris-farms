@@ -1425,7 +1425,8 @@ def generate_farm_report(records, options, filepath):
     story = []
 
     # Header
-    story.append(Paragraph("🌿  Farm Management", style_title))
+    story.append(Paragraph("T. Harris Farms", style_title))
+    story.append(Spacer(1, 6))
     story.append(Paragraph("INCOME / EXPENSE REPORT", style_sub))
     story.append(Paragraph(period_label, style_period))
     story.append(HRFlowable(width="100%", thickness=1, color=ACCENT, spaceAfter=12))
