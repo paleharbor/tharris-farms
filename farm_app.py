@@ -35,13 +35,26 @@ except ImportError:
 
 SHEET_NAME = "FarmManagementApp"
 SHEET_ID   = "17MAgmBf5dN98-BjsSEbWscdsj1kNUzxeQf1DNOUhYtk"
-CREDENTIALS_FILE = "credentials.json"
+
+# Always find credentials.json next to the exe or script
+if getattr(sys, 'frozen', False):
+    _APP_DIR = os.path.dirname(sys.executable)
+else:
+    _APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+CREDENTIALS_FILE = os.path.join(_APP_DIR, "credentials.json")
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-EXPENSE_CATEGORIES = ["Feed", "Parts", "Chemicals", "Meds", "Basic Supplies", "Fencing", "Livestock"]
+EXPENSE_CATEGORIES = [
+    "Basic Supplies", "Building Supplies", "Chemicals", "Electric",
+    "Farm Insurance", "Feed", "Fuel/Diesel", "Gas", "Gravel",
+    "Lime/Fertilizer", "Livestock", "Meds", "Minerals", "Other",
+    "Parts", "Real Estate Taxes", "Repairs & Maintenance", "Seeds",
+    "Truck Interest", "Truck Mileage", "Truck Taxes", "WiFi"
+]
 DRIVE_FOLDER_ID = "1P21kf7tJ5uSV19VoiA5NC8Hm0k-Jy7Vr"
 
 # ── Google Drive Upload ────────────────────────────────────────────────────────
@@ -221,6 +234,33 @@ QLineEdit, QTextEdit, QComboBox, QDateEdit, QDoubleSpinBox {{
 QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QDateEdit:focus, QDoubleSpinBox:focus {{
     border: 1px solid {COLORS['accent']};
 }}
+QCalendarWidget QToolButton {{
+    color: {COLORS['text']};
+    background-color: {COLORS['bg_panel']};
+    border: none;
+    padding: 4px 8px;
+    font-size: 13px;
+    font-weight: bold;
+}}
+QCalendarWidget QToolButton:hover {{
+    background-color: {COLORS['accent_dim']};
+}}
+QCalendarWidget QToolButton#qt_calendar_prevmonth,
+QCalendarWidget QToolButton#qt_calendar_nextmonth {{
+    color: {COLORS['accent_light']};
+    font-size: 16px;
+    font-weight: bold;
+}}
+QCalendarWidget QWidget#qt_calendar_navigationbar {{
+    background-color: {COLORS['header_bg']};
+    border-bottom: 1px solid {COLORS['border']};
+}}
+QCalendarWidget QAbstractItemView {{
+    background-color: {COLORS['bg_mid']};
+    color: {COLORS['text']};
+    selection-background-color: {COLORS['accent_dim']};
+    selection-color: {COLORS['text']};
+}}
 QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
     background-color: {COLORS['accent_dim']};
     border: none;
@@ -259,15 +299,23 @@ QLabel {{ color: {COLORS['text']}; }}
 QScrollBar:vertical {{
     background: {COLORS['bg_mid']};
     width: 8px;
-    border-radius: 4px;
 }}
 QScrollBar::handle:vertical {{
     background: {COLORS['border']};
-    border-radius: 4px;
     min-height: 20px;
 }}
 QScrollBar::handle:vertical:hover {{ background: {COLORS['accent_dim']}; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}
+QScrollBar:horizontal {{
+    background: {COLORS['bg_mid']};
+    height: 8px;
+}}
+QScrollBar::handle:horizontal {{
+    background: {COLORS['accent']};
+    min-width: 20px;
+}}
+QScrollBar::handle:horizontal:hover {{ background: {COLORS['accent_light']}; }}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0px; }}
 QFrame#divider {{
     background-color: {COLORS['border']};
     max-height: 1px;
@@ -357,9 +405,10 @@ class SheetsBackend:
     def _ensure_sheets(self):
         existing = [ws.title for ws in self.spreadsheet.worksheets()]
         sheets_config = {
-            "Cattle":         ["ID", "Tag", "Birth Date", "Mother", "Father", "Weight (lbs)", "Classification", "Tag/Band Status", "Status"],
-            "CattleArchive":  ["ID", "Tag", "Birth Date", "Mother", "Father", "Weight (lbs)", "Classification", "Tag/Band Status", "Status", "Archived Date"],
-            "Expenses":       ["ID", "Date", "Vendor"] + EXPENSE_CATEGORIES + ["Total", "Receipt Image"],
+            "Cattle":         ["ID", "Tag", "Birth Date", "Mother", "Father", "Classification", "Tag/Band Status", "Status"],
+            "CattleArchive":  ["ID", "Tag", "Birth Date", "Mother", "Father", "Classification", "Tag/Band Status", "Status", "Archived Date"],
+            "Expenses":       ["ID", "Date", "Invoice #", "Vendor"] + EXPENSE_CATEGORIES + ["Total", "Notes", "Receipt Image"],
+            "Income":         ["ID", "Date", "Description", "Amount"],
             "Notes":          ["ID", "Date", "Title", "Body"],
         }
         for sheet_name, headers in sheets_config.items():
@@ -420,16 +469,20 @@ class LocalStore:
         self.connected = False
         self.data = {
             "Cattle": [
-                {"ID": 1, "Tag": "#001", "Birth Date": "2021-03-15", "Mother": "#00X", "Father": "Bull #B01", "Weight (lbs)": 1200, "Classification": "Heifer", "Tag/Band Status": "Tagged & Banded", "Status": "Active"},
-                {"ID": 2, "Tag": "#002", "Birth Date": "2022-07-04", "Mother": "#001", "Father": "Bull #B01", "Weight (lbs)": 950,  "Classification": "Bull",   "Tag/Band Status": "Tagged Only",     "Status": "Active"},
+                {"ID": 1, "Tag": "#001", "Birth Date": "2021-03-15", "Mother": "#00X", "Father": "Bull #B01", "Classification": "Heifer", "Tag/Band Status": "Tagged & Banded", "Status": "Active"},
+                {"ID": 2, "Tag": "#002", "Birth Date": "2022-07-04", "Mother": "#001", "Father": "Bull #B01", "Classification": "Bull",   "Tag/Band Status": "Tagged Only",     "Status": "Active"},
             ],
             "CattleArchive": [
-                {"ID": 3, "Tag": "#003", "Birth Date": "2019-11-20", "Mother": "Unknown", "Father": "Unknown", "Weight (lbs)": 1350, "Classification": "Heifer", "Tag/Band Status": "Tagged & Banded", "Status": "Sold", "Archived Date": "2025-01-05"},
+                {"ID": 3, "Tag": "#003", "Birth Date": "2019-11-20", "Mother": "Unknown", "Father": "Unknown", "Classification": "Heifer", "Tag/Band Status": "Tagged & Banded", "Status": "Sold", "Archived Date": "2025-01-05"},
             ],
             "Expenses": [
-                {"ID": 1, "Date": "2025-02-01", "Vendor": "Tractor Supply", "Feed": 320.00, "Parts": 0, "Chemicals": 0, "Meds": 0, "Basic Supplies": 45.00, "Fencing": 0, "Livestock": 0, "Total": 365.00},
-                {"ID": 2, "Date": "2025-02-14", "Vendor": "Ace Hardware",   "Feed": 0, "Parts": 145.00, "Chemicals": 0, "Meds": 0, "Basic Supplies": 0, "Fencing": 78.00, "Livestock": 0, "Total": 223.00},
-                {"ID": 3, "Date": "2025-03-10", "Vendor": "Co-op Farm Store","Feed": 210.00, "Parts": 0, "Chemicals": 55.00, "Meds": 120.00, "Basic Supplies": 0, "Fencing": 0, "Livestock": 0, "Total": 385.00},
+                {"ID": 1, "Date": "2025-02-01", "Invoice #": "INV-001", "Vendor": "Tractor Supply", "Feed": 320.00, "Parts": 0, "Chemicals": 0, "Meds": 0, "Basic Supplies": 45.00, "Building Supplies": 0, "Livestock": 0, "Electric": 0, "Gravel": 0, "Repairs & Maintenance": 0, "Gas": 0, "WiFi": 0, "Truck Interest": 0, "Farm Insurance": 0, "Real Estate Taxes": 0, "Truck Taxes": 0, "Truck Mileage": 0, "Fuel/Diesel": 0, "Seeds": 0, "Lime/Fertilizer": 0, "Minerals": 0, "Other": 0, "Total": 365.00, "Notes": "", "Receipt Image": ""},
+                {"ID": 2, "Date": "2025-02-14", "Invoice #": "INV-002", "Vendor": "Ace Hardware", "Feed": 0, "Parts": 145.00, "Chemicals": 0, "Meds": 0, "Basic Supplies": 0, "Building Supplies": 78.00, "Livestock": 0, "Electric": 0, "Gravel": 0, "Repairs & Maintenance": 0, "Gas": 0, "WiFi": 0, "Truck Interest": 0, "Farm Insurance": 0, "Real Estate Taxes": 0, "Truck Taxes": 0, "Truck Mileage": 0, "Fuel/Diesel": 0, "Seeds": 0, "Lime/Fertilizer": 0, "Minerals": 0, "Other": 0, "Total": 223.00, "Notes": "", "Receipt Image": ""},
+                {"ID": 3, "Date": "2025-03-10", "Invoice #": "INV-003", "Vendor": "Co-op Farm Store", "Feed": 210.00, "Parts": 0, "Chemicals": 55.00, "Meds": 120.00, "Basic Supplies": 0, "Building Supplies": 0, "Livestock": 0, "Electric": 0, "Gravel": 0, "Repairs & Maintenance": 0, "Gas": 0, "WiFi": 0, "Truck Interest": 0, "Farm Insurance": 0, "Real Estate Taxes": 0, "Truck Taxes": 0, "Truck Mileage": 0, "Fuel/Diesel": 0, "Seeds": 0, "Lime/Fertilizer": 0, "Minerals": 0, "Other": 0, "Total": 385.00, "Notes": "", "Receipt Image": ""},
+            ],
+            "Income": [
+                {"ID": 1, "Date": "2025-01-15", "Description": "Livestock Sale — Spring Calves", "Amount": 4800.00},
+                {"ID": 2, "Date": "2025-03-20", "Description": "Hay Sale", "Amount": 650.00},
             ],
             "Notes": [
                 {"ID": 1, "Date": "2025-03-01", "Title": "Spring Vaccination Schedule", "Body": "All cattle due for Blackleg + IBR booster in April. Contact Doc Harris."},
@@ -490,8 +543,6 @@ class CattleDialog(QDialog):
         self.mother_input.setPlaceholderText("Mother's tag")
         self.father_input = QLineEdit()
         self.father_input.setPlaceholderText("Father's tag")
-        self.weight_input = QLineEdit()
-        self.weight_input.setPlaceholderText("e.g. 1200")
         self.status_input = QComboBox()
         self.status_input.addItems(["Active", "Sold", "Deceased"])
 
@@ -505,7 +556,6 @@ class CattleDialog(QDialog):
         form.addRow("Birth Date:",     self.birth_input)
         form.addRow("Mother:",         self.mother_input)
         form.addRow("Father:",         self.father_input)
-        form.addRow("Weight (lbs):",   self.weight_input)
         form.addRow("Classification:", self.classification_input)
         form.addRow("Tag/Band Status:", self.tag_status_input)
         form.addRow("Status:",         self.status_input)
@@ -521,7 +571,6 @@ class CattleDialog(QDialog):
                     pass
             self.mother_input.setText(str(self.record.get("Mother", "")))
             self.father_input.setText(str(self.record.get("Father", "")))
-            self.weight_input.setText(str(self.record.get("Weight (lbs)", "")))
             idx = self.status_input.findText(str(self.record.get("Status", "Active")))
             if idx >= 0:
                 self.status_input.setCurrentIndex(idx)
@@ -549,7 +598,6 @@ class CattleDialog(QDialog):
             "Birth Date":       self.birth_input.date().toString("yyyy-MM-dd"),
             "Mother":           self.mother_input.text().strip(),
             "Father":           self.father_input.text().strip(),
-            "Weight (lbs)":     self.weight_input.text().strip(),
             "Classification":   self.classification_input.currentText(),
             "Tag/Band Status":  self.tag_status_input.currentText(),
             "Status":           self.status_input.currentText(),
@@ -587,8 +635,12 @@ class ExpenseDialog(QDialog):
         self.vendor_input = QLineEdit()
         self.vendor_input.setPlaceholderText("e.g. Tractor Supply, Ace Hardware...")
 
-        top_form.addRow("Date:",   self.date_input)
-        top_form.addRow("Vendor:", self.vendor_input)
+        self.invoice_input = QLineEdit()
+        self.invoice_input.setPlaceholderText("e.g. INV-00123  (optional)")
+
+        top_form.addRow("Date:",      self.date_input)
+        top_form.addRow("Invoice #:", self.invoice_input)
+        top_form.addRow("Vendor:",    self.vendor_input)
         layout.addLayout(top_form)
 
         # Divider
@@ -631,11 +683,25 @@ class ExpenseDialog(QDialog):
         for spin in self.cat_inputs.values():
             spin.valueChanged.connect(self._update_total)
 
-        # Receipt photo
+        # Notes
         div2 = QFrame()
         div2.setObjectName("divider")
         div2.setFrameShape(QFrame.Shape.HLine)
         layout.addWidget(div2)
+
+        notes_lbl = QLabel("Notes:")
+        notes_lbl.setStyleSheet(f"color: {COLORS['tan_light']}; font-weight: bold; font-size: 12px;")
+        layout.addWidget(notes_lbl)
+        self.notes_input = QTextEdit()
+        self.notes_input.setPlaceholderText("Any additional details or differentiations for this receipt...")
+        self.notes_input.setFixedHeight(60)
+        layout.addWidget(self.notes_input)
+
+        # Receipt photo
+        div3 = QFrame()
+        div3.setObjectName("divider")
+        div3.setFrameShape(QFrame.Shape.HLine)
+        layout.addWidget(div3)
 
         self._image_url  = ""
         self._local_path = ""
@@ -660,6 +726,7 @@ class ExpenseDialog(QDialog):
                 except:
                     pass
             self.vendor_input.setText(str(self.record.get("Vendor", "")))
+            self.invoice_input.setText(str(self.record.get("Invoice #", "")))
             for cat in EXPENSE_CATEGORIES:
                 val = safe_float(self.record.get(cat, 0))
                 self.cat_inputs[cat].setValue(val)
@@ -668,6 +735,7 @@ class ExpenseDialog(QDialog):
                 self._image_url = existing_url
                 self.photo_lbl.setText("📷  Image attached")
                 self.photo_lbl.setStyleSheet(f"color: {COLORS['success']}; font-size: 11px;")
+            self.notes_input.setPlainText(str(self.record.get("Notes", "")))
 
         btn_row = QHBoxLayout()
         save_btn = QPushButton("💾  Save Receipt")
@@ -715,9 +783,11 @@ class ExpenseDialog(QDialog):
 
         return {
             "Date":          self.date_input.date().toString("yyyy-MM-dd"),
+            "Invoice #":     self.invoice_input.text().strip(),
             "Vendor":        self.vendor_input.text().strip(),
             **cats,
             "Total":         total,
+            "Notes":         self.notes_input.toPlainText().strip(),
             "Receipt Image": image_url,
         }
 
@@ -826,7 +896,7 @@ class DashboardPage(QWidget):
 
         # Recent Cattle
         inner_layout.addWidget(self._section_label("Recent Cattle"))
-        self.recent_cattle_table = make_table(["Tag", "Birth Date", "Status", "Weight (lbs)"])
+        self.recent_cattle_table = make_table(["Tag", "Birth Date", "Status"])
         self.recent_cattle_table.setMaximumHeight(180)
         inner_layout.addWidget(self.recent_cattle_table)
 
@@ -867,11 +937,12 @@ class DashboardPage(QWidget):
     def refresh(self):
         cattle   = self.backend.get_all_records("Cattle")
         expenses = self.backend.get_all_records("Expenses")
+        income   = self.backend.get_all_records("Income")
 
         active       = sum(1 for c in cattle if str(c.get("Status", "")).lower() == "active")
         total_exp    = sum(safe_float(e.get("Total", 0)) for e in expenses)
-        # Available balance placeholder — will be updated when Annual Sales section is added
-        avail        = 0.0 - total_exp
+        total_inc    = sum(safe_float(i.get("Amount", 0)) for i in income)
+        avail        = total_inc - total_exp
 
         self.card_herd._value_label.setText(str(active))
         self.card_expenses._value_label.setText(f"${total_exp:,.2f}")
@@ -884,7 +955,7 @@ class DashboardPage(QWidget):
         for rd in cattle[-5:]:
             row = self.recent_cattle_table.rowCount()
             self.recent_cattle_table.insertRow(row)
-            for col, key in enumerate(["Tag", "Birth Date", "Status", "Weight (lbs)"]):
+            for col, key in enumerate(["Tag", "Birth Date", "Status"]):
                 item = QTableWidgetItem(str(rd.get(key, "")))
                 if key == "Status":
                     color = COLORS['success'] if rd.get(key) == "Active" else COLORS['warning']
@@ -946,7 +1017,7 @@ class CattlePage(QWidget):
         )
         herd_layout.addWidget(herd_toolbar)
 
-        self.table = make_table(["Tag", "Birth Date", "Mother", "Father", "Weight (lbs)", "Classification", "Tag/Band Status", "Status"])
+        self.table = make_table(["Tag", "Birth Date", "Mother", "Father", "Classification", "Tag/Band Status", "Status"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         herd_layout.addWidget(self.table)
 
@@ -965,7 +1036,7 @@ class CattlePage(QWidget):
         )
         arch_layout.addWidget(arch_toolbar)
 
-        self.archive_table = make_table(["Tag", "Birth Date", "Mother", "Father", "Weight (lbs)", "Classification", "Tag/Band Status", "Status", "Archived Date"])
+        self.archive_table = make_table(["Tag", "Birth Date", "Mother", "Father", "Classification", "Tag/Band Status", "Status", "Archived Date"])
         self.archive_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         arch_layout.addWidget(self.archive_table)
 
@@ -1028,7 +1099,7 @@ class CattlePage(QWidget):
         for rd in records:
             row = self.table.rowCount()
             self.table.insertRow(row)
-            for col, key in enumerate(["Tag", "Birth Date", "Mother", "Father", "Weight (lbs)", "Classification", "Tag/Band Status", "Status"]):
+            for col, key in enumerate(["Tag", "Birth Date", "Mother", "Father", "Classification", "Tag/Band Status", "Status"]):
                 item = QTableWidgetItem(str(rd.get(key, "")))
                 if key == "Status":
                     color = COLORS['success'] if rd.get(key) == "Active" else COLORS['warning'] if rd.get(key) == "Sold" else COLORS['danger']
@@ -1042,7 +1113,7 @@ class CattlePage(QWidget):
         for rd in records:
             row = self.archive_table.rowCount()
             self.archive_table.insertRow(row)
-            for col, key in enumerate(["Tag", "Birth Date", "Mother", "Father", "Weight (lbs)", "Classification", "Tag/Band Status", "Status", "Archived Date"]):
+            for col, key in enumerate(["Tag", "Birth Date", "Mother", "Father", "Classification", "Tag/Band Status", "Status", "Archived Date"]):
                 item = QTableWidgetItem(str(rd.get(key, "")))
                 if key == "Status":
                     item.setForeground(QColor(COLORS['warning'] if rd.get(key) == "Sold" else COLORS['danger']))
@@ -1078,7 +1149,7 @@ class CattlePage(QWidget):
             data = dlg.get_data()
             new_id = self.backend.next_id("Cattle")
             row = [new_id, data["Tag"], data["Birth Date"], data["Mother"],
-                   data["Father"], data["Weight (lbs)"], data["Classification"],
+                   data["Father"], data["Classification"],
                    data["Tag/Band Status"], data["Status"]]
             self.backend.append_row("Cattle", row)
             self.refresh()
@@ -1092,7 +1163,7 @@ class CattlePage(QWidget):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             data = dlg.get_data()
             row_data = [record.get("ID"), data["Tag"], data["Birth Date"], data["Mother"],
-                        data["Father"], data["Weight (lbs)"], data["Classification"],
+                        data["Father"], data["Classification"],
                         data["Tag/Band Status"], data["Status"]]
             full_idx = next((i for i, r in enumerate(self.records) if r.get("ID") == record.get("ID")), idx)
             self.backend.update_row("Cattle", full_idx, row_data)
@@ -1112,7 +1183,7 @@ class CattlePage(QWidget):
             arch_id = self.backend.next_id("CattleArchive")
             arch_row = [arch_id, record.get("Tag"), record.get("Birth Date"),
                         record.get("Mother"), record.get("Father"),
-                        record.get("Weight (lbs)"), record.get("Classification"),
+                        record.get("Classification"),
                         record.get("Tag/Band Status"), record.get("Status"), today]
             self.backend.append_row("CattleArchive", arch_row)
             full_idx = next((i for i, r in enumerate(self.records) if r.get("ID") == record.get("ID")), idx)
@@ -1129,7 +1200,7 @@ class CattlePage(QWidget):
             data = dlg.get_data()
             archived_date = record.get("Archived Date", "")
             row_data = [record.get("ID"), data["Tag"], data["Birth Date"], data["Mother"],
-                        data["Father"], data["Weight (lbs)"], data["Classification"],
+                        data["Father"], data["Classification"],
                         data["Tag/Band Status"], data["Status"], archived_date]
             full_idx = next((i for i, r in enumerate(self.archive_records) if r.get("ID") == record.get("ID")), idx)
             self.backend.update_row("CattleArchive", full_idx, row_data)
@@ -1504,16 +1575,21 @@ class FinancesPage(QWidget):
         report_btn.setObjectName("secondary_btn")
         report_btn.clicked.connect(self._generate_report)
 
+        income_btn = QPushButton("＋  Add Income")
+        income_btn.setObjectName("secondary_btn")
+        income_btn.clicked.connect(self._add_income)
+
         tb.addWidget(self.search_input)
         tb.addStretch()
         tb.addWidget(report_btn)
         tb.addWidget(edit_btn)
         tb.addWidget(del_btn)
+        tb.addWidget(income_btn)
         tb.addWidget(add_btn)
         layout.addWidget(toolbar)
 
         # Table: Date | Vendor | categories | Total | 📷
-        headers = ["Date", "Vendor"] + EXPENSE_CATEGORIES + ["Total", "📷"]
+        headers = ["Date", "Invoice #", "Vendor"] + EXPENSE_CATEGORIES + ["Total", "📷"]
         self.table = make_table(headers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -1530,7 +1606,7 @@ class FinancesPage(QWidget):
 
     def _render(self, records):
         self.table.setRowCount(0)
-        keys = ["Date", "Vendor"] + EXPENSE_CATEGORIES + ["Total", "📷"]
+        keys = ["Date", "Invoice #", "Vendor"] + EXPENSE_CATEGORIES + ["Total", "📷"]
 
         # Data rows
         for rd in records:
@@ -1569,7 +1645,7 @@ class FinancesPage(QWidget):
                 item = QTableWidgetItem("TOTALS")
                 item.setForeground(QColor(COLORS['tan_light']))
                 font = QFont(); font.setBold(True); item.setFont(font)
-            elif key in ("Vendor", "📷"):
+            elif key in ("Invoice #", "Vendor", "📷"):
                 item = QTableWidgetItem("")
             elif key == "Total":
                 item = QTableWidgetItem(f"${grand:,.2f}")
@@ -1588,7 +1664,7 @@ class FinancesPage(QWidget):
         self.table._records = records
 
     def _on_cell_clicked(self, row, col):
-        camera_col = 2 + len(EXPENSE_CATEGORIES) + 1  # Date+Vendor + cats + Total
+        camera_col = 3 + len(EXPENSE_CATEGORIES) + 1  # Date+Invoice+#+Vendor + cats + Total
         if col != camera_col:
             return
         rec_list = getattr(self.table, "_records", self.records)
@@ -1663,9 +1739,9 @@ class FinancesPage(QWidget):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             data = dlg.get_data()
             new_id = self.backend.next_id("Expenses")
-            row = [new_id, data["Date"], data["Vendor"]] + \
+            row = [new_id, data["Date"], data["Invoice #"], data["Vendor"]] + \
                   [data[cat] for cat in EXPENSE_CATEGORIES] + \
-                  [data["Total"], data["Receipt Image"]]
+                  [data["Total"], data["Notes"], data["Receipt Image"]]
             self.backend.append_row("Expenses", row)
             self.refresh()
 
@@ -1681,9 +1757,9 @@ class FinancesPage(QWidget):
         dlg = ExpenseDialog(self, record)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             data = dlg.get_data()
-            row_data = [record.get("ID"), data["Date"], data["Vendor"]] + \
+            row_data = [record.get("ID"), data["Date"], data["Invoice #"], data["Vendor"]] + \
                        [data[cat] for cat in EXPENSE_CATEGORIES] + \
-                       [data["Total"], data["Receipt Image"]]
+                       [data["Total"], data["Notes"], data["Receipt Image"]]
             full_idx = next((i for i, r in enumerate(self.records) if r.get("ID") == record.get("ID")), row)
             self.backend.update_row("Expenses", full_idx, row_data)
             self.refresh()
@@ -1734,6 +1810,15 @@ class FinancesPage(QWidget):
                 f"Report saved successfully:\n{filepath}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to generate report:\n{str(e)}")
+
+    def _add_income(self):
+        dlg = IncomeDialog(self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            data = dlg.get_data()
+            new_id = self.backend.next_id("Income")
+            self.backend.append_row("Income", [new_id, data["Date"], data["Description"], data["Amount"]])
+            QMessageBox.information(self, "Income Added",
+                f"✅  Income entry saved: {data['Description']}  —  ${data['Amount']:,.2f}")
 
 
 class NotesPage(QWidget):
@@ -1891,6 +1976,212 @@ class NotesPage(QWidget):
 
 
 # ── Main Window ───────────────────────────────────────────────────────────────
+# ── Income Dialog ─────────────────────────────────────────────────────────────
+class IncomeDialog(QDialog):
+    def __init__(self, parent=None, record=None):
+        super().__init__(parent)
+        self.record = record
+        self.setWindowTitle("Add Income" if not record else "Edit Income")
+        self.setMinimumWidth(400)
+        self.setStyleSheet(STYLESHEET)
+        self._build()
+
+    def _build(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
+
+        title = QLabel("📈  " + ("Add Income" if not self.record else "Edit Income"))
+        title.setObjectName("page_title")
+        layout.addWidget(title)
+
+        form = QFormLayout()
+        form.setSpacing(10)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
+        self.date_input = QDateEdit()
+        self.date_input.setCalendarPopup(True)
+        self.date_input.setDate(QDate.currentDate())
+        self.date_input.setDisplayFormat("yyyy-MM-dd")
+
+        self.desc_input = QLineEdit()
+        self.desc_input.setPlaceholderText("e.g. Livestock Sale, Hay Sale...")
+
+        self.amount_input = QDoubleSpinBox()
+        self.amount_input.setPrefix("$")
+        self.amount_input.setDecimals(2)
+        self.amount_input.setMinimum(0.00)
+        self.amount_input.setMaximum(9999999.99)
+        self.amount_input.setSingleStep(100.00)
+        self.amount_input.setValue(0.00)
+
+        form.addRow("Date:",        self.date_input)
+        form.addRow("Description:", self.desc_input)
+        form.addRow("Amount:",      self.amount_input)
+        layout.addLayout(form)
+
+        if self.record:
+            bd = str(self.record.get("Date", ""))
+            if bd:
+                try:
+                    self.date_input.setDate(QDate.fromString(bd, "yyyy-MM-dd"))
+                except:
+                    pass
+            self.desc_input.setText(str(self.record.get("Description", "")))
+            self.amount_input.setValue(safe_float(self.record.get("Amount", 0)))
+
+        btn_row = QHBoxLayout()
+        save_btn = QPushButton("💾  Save")
+        save_btn.setObjectName("primary_btn")
+        save_btn.clicked.connect(self.accept)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("secondary_btn")
+        cancel_btn.clicked.connect(self.reject)
+        btn_row.addWidget(cancel_btn)
+        btn_row.addWidget(save_btn)
+        layout.addLayout(btn_row)
+
+    def get_data(self):
+        return {
+            "Date":        self.date_input.date().toString("yyyy-MM-dd"),
+            "Description": self.desc_input.text().strip(),
+            "Amount":      self.amount_input.value(),
+        }
+
+
+# ── Income Page ───────────────────────────────────────────────────────────────
+class IncomePage(QWidget):
+    def __init__(self, backend):
+        super().__init__()
+        self.backend = backend
+        self.records = []
+        self.setObjectName("content_area")
+        self._build()
+
+    def _build(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        layout.addWidget(make_page_header("📈  Income", "SALES & REVENUE"))
+
+        # Total bar
+        total_bar = QWidget()
+        total_bar.setStyleSheet(f"background-color: {COLORS['bg_panel']}; border-bottom: 1px solid {COLORS['border']};")
+        tb_layout = QHBoxLayout(total_bar)
+        tb_layout.setContentsMargins(24, 8, 24, 8)
+        self.total_lbl = QLabel("Total Income: $0.00")
+        self.total_lbl.setStyleSheet(f"color: {COLORS['success']}; font-weight: bold; font-size: 14px;")
+        tb_layout.addWidget(self.total_lbl)
+        tb_layout.addStretch()
+        layout.addWidget(total_bar)
+
+        # Toolbar
+        toolbar = QWidget()
+        toolbar.setStyleSheet(f"background-color: {COLORS['bg_mid']}; border-bottom: 1px solid {COLORS['border']};")
+        tb = QHBoxLayout(toolbar)
+        tb.setContentsMargins(16, 10, 16, 10)
+
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("🔍  Search description...")
+        self.search_input.setFixedWidth(240)
+        self.search_input.textChanged.connect(self._filter)
+
+        add_btn = QPushButton("＋  Add Income")
+        add_btn.setObjectName("primary_btn")
+        add_btn.clicked.connect(self._add)
+
+        edit_btn = QPushButton("✏  Edit")
+        edit_btn.setObjectName("secondary_btn")
+        edit_btn.clicked.connect(self._edit)
+
+        del_btn = QPushButton("🗑  Delete")
+        del_btn.setObjectName("danger_btn")
+        del_btn.clicked.connect(self._delete)
+
+        tb.addWidget(self.search_input)
+        tb.addStretch()
+        tb.addWidget(edit_btn)
+        tb.addWidget(del_btn)
+        tb.addWidget(add_btn)
+        layout.addWidget(toolbar)
+
+        self.table = make_table(["Date", "Description", "Amount"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.table)
+
+    def refresh(self):
+        self.records = self.backend.get_all_records("Income")
+        total = sum(safe_float(r.get("Amount", 0)) for r in self.records)
+        self.total_lbl.setText(f"Total Income: ${total:,.2f}")
+        self._render(self.records)
+
+    def _render(self, records):
+        self.table.setRowCount(0)
+        for rd in records:
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            for col, key in enumerate(["Date", "Description", "Amount"]):
+                val = str(rd.get(key, ""))
+                if key == "Amount":
+                    item = QTableWidgetItem(f"${safe_float(val):,.2f}")
+                    item.setForeground(QColor(COLORS['success']))
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                else:
+                    item = QTableWidgetItem(val)
+                self.table.setItem(row, col, item)
+        self.table._records = records
+
+    def _filter(self):
+        search = self.search_input.text().lower()
+        filtered = [r for r in self.records
+                    if not search or search in str(r.get("Description", "")).lower()]
+        self._render(filtered)
+
+    def _add(self):
+        dlg = IncomeDialog(self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            data = dlg.get_data()
+            new_id = self.backend.next_id("Income")
+            self.backend.append_row("Income", [new_id, data["Date"], data["Description"], data["Amount"]])
+            self.refresh()
+
+    def _edit(self):
+        row = self.table.currentRow()
+        if row < 0:
+            QMessageBox.information(self, "Select a Row", "Please select an entry to edit.")
+            return
+        rec_list = getattr(self.table, "_records", self.records)
+        if row >= len(rec_list):
+            return
+        record = rec_list[row]
+        dlg = IncomeDialog(self, record)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            data = dlg.get_data()
+            full_idx = next((i for i, r in enumerate(self.records) if r.get("ID") == record.get("ID")), row)
+            self.backend.update_row("Income", full_idx,
+                [record.get("ID"), data["Date"], data["Description"], data["Amount"]])
+            self.refresh()
+
+    def _delete(self):
+        row = self.table.currentRow()
+        if row < 0:
+            QMessageBox.information(self, "Select a Row", "Please select an entry to delete.")
+            return
+        rec_list = getattr(self.table, "_records", self.records)
+        if row >= len(rec_list):
+            return
+        record = rec_list[row]
+        confirm = QMessageBox.question(self, "Confirm Delete",
+            f"Delete income entry: '{record.get('Description', '')}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if confirm == QMessageBox.StandardButton.Yes:
+            full_idx = next((i for i, r in enumerate(self.records) if r.get("ID") == record.get("ID")), row)
+            self.backend.delete_row("Income", full_idx)
+            self.refresh()
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -1985,14 +2276,12 @@ class MainWindow(QMainWindow):
 
     def _check_for_updates(self):
         import urllib.request
-        import json
         import shutil
-        import subprocess
 
         GITHUB_VERSION_URL = "https://raw.githubusercontent.com/paleharbor/tharris-farms/main/version.txt"
-        GITHUB_EXE_URL     = "https://raw.githubusercontent.com/paleharbor/tharris-farms/main/T.Harris%20Farms.exe"
-        VERSION_FILE       = os.path.join(os.path.dirname(os.path.abspath(__file__)), "version.txt")
-        EXE_PATH           = os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__)
+        GITHUB_EXE_URL     = "https://raw.githubusercontent.com/paleharbor/tharris-farms/main/dist/T.Harris%20Farms.exe"
+        VERSION_FILE       = os.path.join(_APP_DIR, "version.txt")
+        NEW_EXE            = os.path.join(_APP_DIR, "T.Harris Farms.exe")
 
         try:
             # Get current local version
@@ -2016,22 +2305,16 @@ class MainWindow(QMainWindow):
             if confirm != QMessageBox.StandardButton.Yes:
                 return
 
-            # Download new exe
-            app_dir  = os.path.dirname(os.path.abspath(__file__))
-            new_exe  = os.path.join(app_dir, "T.Harris Farms.exe")
-            temp_exe = new_exe + ".tmp"
-
+            # Download new exe next to current exe
+            temp_exe = NEW_EXE + ".tmp"
             req2 = urllib.request.Request(GITHUB_EXE_URL, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req2, timeout=60) as resp:
                 with open(temp_exe, "wb") as f:
                     shutil.copyfileobj(resp, f)
 
-            # Replace exe and update version file
-            if os.path.exists(new_exe):
-                os.replace(temp_exe, new_exe)
-            else:
-                os.rename(temp_exe, new_exe)
+            os.replace(temp_exe, NEW_EXE)
 
+            # Update local version file
             with open(VERSION_FILE, "w") as f:
                 f.write(remote_version)
 
