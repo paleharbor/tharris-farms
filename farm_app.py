@@ -1633,8 +1633,14 @@ class FinancesPage(QWidget):
         layout.addWidget(self.table)
 
     def refresh(self):
-        self.records = self.backend.get_all_records("Expenses")
-        self.income_records = self.backend.get_all_records("Income")
+        self.records = sorted(
+            self.backend.get_all_records("Expenses"),
+            key=lambda r: str(r.get("Date", ""))
+        )
+        self.income_records = sorted(
+            self.backend.get_all_records("Income"),
+            key=lambda r: str(r.get("Date", ""))
+        )
         self._update_totals()
         self._render(self.records)
 
